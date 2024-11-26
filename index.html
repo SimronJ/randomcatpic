@@ -9,21 +9,21 @@
             margin: 0;
             padding: 0;
             height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
             background-color: black;
-            position: relative;
             overflow: hidden;
+            cursor: grab;
+        }
+
+        body.dragging {
+            cursor: grabbing;
         }
 
         .image-container {
             width: 100%;
             height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            transform: translateY(0);
+            transition: transform 0.3s ease-out;
+            user-select: none;
         }
 
         img {
@@ -31,39 +31,173 @@
             height: 100%;
             object-fit: cover;
             display: block;
+            pointer-events: none;
         }
 
-        .refresh-text {
+        .refresh-indicator {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-family: Arial, sans-serif;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .refresh-indicator.visible {
+            opacity: 1;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            display: none;
+            pointer-events: none;
+        }
+
+        .keyboard-hint {
             position: fixed;
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
             color: white;
-            background-color: rgba(0, 0, 0, 0.5);
+            background-color: rgba(0, 0, 0, 0.7);
             padding: 10px 20px;
             border-radius: 20px;
             font-family: Arial, sans-serif;
-            z-index: 10;
         }
     </style>
 </head>
 <body>
     <div class="image-container">
-        <img 
-            src="https://api.thecatapi.com/v1/images/search?size=full" 
-            alt="Random Cat"
-        >
+        <img alt="Random Cat">
     </div>
-    <div class="refresh-text">Refresh for new cat</div>
+    <div class="refresh-indicator">Pull down to refresh</div>
+    <div class="loading">Loading...</div>
+    <div class="keyboard-hint">Press 'R' to refresh or drag down</div>
 
     <script>
-        // Fetch and display cat image
-        fetch('https://api.thecatapi.com/v1/images/search')
-            .then(response => response.json())
-            .then(data => {
-                document.querySelector('img').src = data[0].url;
-            })
-            .catch(error => console.error('Error:', error));
+        const imageContainer = document.querySelector('.image-container');
+        const refreshIndicator = document.querySelector('.refresh-indicator');
+        const loadingText = document.querySelector('.loading');
+        const img = document.querySelector('img');
+
+        let startY = 0;
+        let currentY = 0;
+        let isDragging = false;
+        const REFRESH_THRESHOLD = 150;
+
+        function loadNewCat() {
+            loadingText.style.display = 'block';
+            fetch('https://api.thecatapi.com/v1/images/search')
+                .then(response => response.json())
+                .then(data => {
+                    img.src = data[0].url;
+                    loadingText.style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    loadingText.style.display = 'none';
+                });
+        }
+
+        // Load initial cat image
+        loadNewCat();
+
+        function updatePosition(y) {
+            const pull = Math.max(0, y - startY);
+            const resistance = pull * 0.5;
+            imageContainer.style.transform = `translateY(${resistance}px)`;
+            
+            if (resistance > REFRESH_THRESHOLD) {
+                refreshIndicator.textContent = 'Release to refresh';
+            } else {
+                refreshIndicator.textContent = 'Pull down to refresh';
+            }
+        }
+
+        function resetPosition() {
+            imageContainer.style.transform = 'translateY(0)';
+            refreshIndicator.classList.remove('visible');
+            isDragging = false;
+            document.body.classList.remove('dragging');
+        }
+
+        // Touch Events
+        imageContainer.addEventListener('touchstart', (e) => {
+            startY = e.touches[0].clientY;
+            isDragging = true;
+            refreshIndicator.classList.add('visible');
+        });
+
+        imageContainer.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            currentY = e.touches[0].clientY;
+            updatePosition(currentY);
+        });
+
+        imageContainer.addEventListener('touchend', () => {
+            if (!isDragging) return;
+            
+            const pull = Math.max(0, currentY - startY);
+            if (pull > REFRESH_THRESHOLD) {
+                loadNewCat();
+            }
+            resetPosition();
+        });
+
+        // Mouse Events
+        imageContainer.addEventListener('mousedown', (e) => {
+            startY = e.clientY;
+            isDragging = true;
+            refreshIndicator.classList.add('visible');
+            document.body.classList.add('dragging');
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            currentY = e.clientY;
+            updatePosition(currentY);
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!isDragging) return;
+            
+            const pull = Math.max(0, currentY - startY);
+            if (pull > REFRESH_THRESHOLD) {
+                loadNewCat();
+            }
+            resetPosition();
+        });
+
+        // Keyboard Event
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'r') {
+                loadNewCat();
+            }
+        });
+
+        // Prevent default behaviors
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        imageContainer.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+        });
+
+        // Handle mouse leaving the window
+        window.addEventListener('mouseleave', resetPosition);
     </script>
 </body>
 </html>
